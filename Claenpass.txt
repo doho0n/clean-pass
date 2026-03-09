@@ -1,4 +1,4 @@
-//일반운전자까지 구현완료
+
 #include <Wire.h>
 #include <LiquidCrystal_I2C.h>
 #include <Adafruit_NeoPixel.h>
@@ -13,15 +13,15 @@
 #define FLOW_SENSOR_PIN 15
 #define ALCOHOL_SENSOR_PIN 34
 #define SERVO_PIN 13  // 서보모터 핀
-#define WIFI_SSID "U+Net5720"    // enter your wifi name
-#define WIFI_PASSWORD "J3BD#48BF5"    // enter your wifi password
-//#define WIFI_SSID "BU-WLAN1"    // enter your wifi name
-//#define WIFI_PASSWORD "baekseok11991"    // enter your wifi password
+#define WIFI_SSID ""    // enter your wifi name
+#define WIFI_PASSWORD ""    // enter your wifi password
+//#define WIFI_SSID ""    // enter your wifi name
+//#define WIFI_PASSWORD ""    // enter your wifi password
 #define SMTP_server "smtp.gmail.com"
 #define SMTP_Port 587
-#define sender_email "le584131@gmail.com"    // sender email id
-#define sender_password "ncwxnonqctxcwxqu"
-#define Recipient_email "le584131@gmail.com"    // receiver email id
+#define sender_email "@gmail.com"    // sender email id
+#define sender_password ""
+#define Recipient_email "@gmail.com"    // receiver email id
 #define Recipient_name "ESP32"
 
 SMTPSession smtp;
@@ -244,3 +244,4 @@ void sendEmail() {
   if (!MailClient.sendMail(&smtp, &message))
     Serial.println("Error sending Email, " + smtp.errorReason());
 }
+
