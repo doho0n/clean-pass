@@ -209,6 +209,9 @@ ESP32-CAM은 촬영 전용으로 사용하고, 나머지 센서 제어는 ESP32�
 
 <img width="884" height="426" alt="image" src="https://github.com/user-attachments/assets/a1d37e6f-9a2b-4327-9c29-a4073aa40425" />
 
+## Demo Video
+
+[시연 영상 보러가기](https://www.youtube.com/watch?v=영상ID)
 
 
 ---
