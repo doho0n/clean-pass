@@ -1,0 +1,246 @@
+//일반운전자까지 구현완료
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <Adafruit_NeoPixel.h>
+#include <ESP32Servo.h>  // ESP32Servo 라이브러리 포함
+#include <WiFi.h>
+#include <ESP_Mail_Client.h>
+
+// 핀 설정
+#define TRIG_PIN 18
+#define ECHO_PIN 19
+#define LED_PIN 23
+#define FLOW_SENSOR_PIN 15
+#define ALCOHOL_SENSOR_PIN 34
+#define SERVO_PIN 13  // 서보모터 핀
+#define WIFI_SSID "U+Net5720"    // enter your wifi name
+#define WIFI_PASSWORD "J3BD#48BF5"    // enter your wifi password
+//#define WIFI_SSID "BU-WLAN1"    // enter your wifi name
+//#define WIFI_PASSWORD "baekseok11991"    // enter your wifi password
+#define SMTP_server "smtp.gmail.com"
+#define SMTP_Port 587
+#define sender_email "le584131@gmail.com"    // sender email id
+#define sender_password "ncwxnonqctxcwxqu"
+#define Recipient_email "le584131@gmail.com"    // receiver email id
+#define Recipient_name "ESP32"
+
+SMTPSession smtp;
+
+// NeoPixel 객체 생성
+#define NUM_LEDS 12
+Adafruit_NeoPixel strip(NUM_LEDS, LED_PIN, NEO_GRB + NEO_KHZ800);
+
+// LCD 객체 생성
+LiquidCrystal_I2C lcd(0x27, 16, 2);  // I2C 주소는 환경에 따라 다를 수 있음
+
+// 서보모터 객체 생성
+Servo myServo;  // 서보모터 객체 생성
+
+// 거리 임계값
+#define DISTANCE_THRESHOLD 10
+// 유량 센서 기준값
+#define FLOW_THRESHOLD 100
+
+// 유량 관련 변수
+unsigned long lastMeasurement = 0;
+volatile int flowPulseCount = 0;  // 유량 펄스 카운트
+float flowRate = 0.0;  
+bool isObjectDetected = false; 
+
+void setup() {
+  Serial.begin(115200);
+
+  Serial.print("\nConnecting...");
+  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+  while (WiFi.status() != WL_CONNECTED) {
+    Serial.print(".");
+    delay(200);
+  }
+  Serial.println("\nWiFi connected.");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+  smtp.debug(1);
+
+  // 핀 설정
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  pinMode(FLOW_SENSOR_PIN, INPUT);
+
+  // NeoPixel 초기화
+  strip.begin();
+  strip.show();
+  setAllLEDsColor(strip.Color(255, 255, 255));  // 초기 흰색
+
+  // LCD 초기화
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+
+  // 서보모터 초기화
+  myServo.attach(SERVO_PIN);  // 서보모터 핀 연결
+  myServo.write(0);  // 초기 위치 (문 닫힘)
+
+  // 유량 센서 인터럽트 설정
+  attachInterrupt(digitalPinToInterrupt(FLOW_SENSOR_PIN), countFlowPulses, FALLING);
+  lastMeasurement = millis();
+}
+
+void loop() {
+  // 거리 측정
+  long duration = getUltrasonicDistance();
+  float distance = duration * 0.034 / 2;
+
+  Serial.print("Distance: ");
+  Serial.println(distance);
+
+  if (distance < DISTANCE_THRESHOLD) {
+    if (!isObjectDetected) {  // 새로운 물체가 감지된 경우만 실행
+      isObjectDetected = true;  // 감지 상태를 true로 설정
+
+      // 물체 감지 시
+      setAllLEDsColor(strip.Color(0, 0, 255));  // 파란색
+      lcd.clear();
+      lcd.print("Alcohol Test");
+      lcd.setCursor(0, 1);
+      lcd.print("Start");
+      delay(3000);
+
+      lcd.clear();
+      lcd.print("Blow Strongly");
+      delay(3000);
+
+      // 유량 센서 확인
+      while (true) {
+        float flowRate = calculateFlowRate();
+        Serial.print("Flow Rate: ");
+        Serial.println(flowRate);
+
+        if (flowRate >= FLOW_THRESHOLD) {
+          lcd.clear();
+          lcd.print("Measuring Alcohol");
+          delay(3000);
+
+          // 알코올 수치 측정
+          int alcoholValue = analogRead(ALCOHOL_SENSOR_PIN);
+          lcd.clear();
+          lcd.print("Alcohol Level: ");
+          lcd.setCursor(0, 1);
+          lcd.print(alcoholValue);
+          delay(3000);
+
+          // 알코올 수치에 따라 LED 색상 변화
+          if (alcoholValue > 700) {  // 알코올 기준치 설정
+            setAllLEDsColor(strip.Color(255, 0, 0));  // 빨간색
+            lcd.clear();
+            lcd.print("ID Card Capture");
+            lcd.setCursor(0, 1);
+            lcd.print("Button Click");
+            delay(4000);
+            sendEmail();
+            setServoMotor(90);  // 서보모터 90도로 차단기 열기
+            delay(5000);  // 5초 대기
+            setServoMotor(0);  // 차단기 닫기
+          }
+    
+            else {
+            setAllLEDsColor(strip.Color(0, 255, 0));  // 녹색
+            // 알콜 미감지 시 서보모터로 차단기 열기
+            setServoMotor(90);  // 서보모터 90도로 차단기 열기
+            delay(5000);  // 5초 대기
+            setServoMotor(0);  // 차단기 닫기
+            }
+          flowPulseCount = 0;  // 펄스 카운트를 명시적으로 리
+          break;  // 측정 종료
+        } else {
+          // 유량 센서 값이 부족할 경우
+          lcd.clear();
+          lcd.print("Blow Stronger!");
+          delay(1000);
+        }
+      }
+    }
+  } else {
+    if (isObjectDetected) {
+      isObjectDetected = false;  // 물체가 떠난 경우 상태를 초기화
+    }
+    setAllLEDsColor(strip.Color(255, 255, 255));  // 흰색
+    lcd.clear();
+  }
+
+  delay(200);
+}
+
+
+// 유량 계산 함수
+float calculateFlowRate() {
+  unsigned long currentMillis = millis();
+  float flowRateLocal = 0.0;
+
+  // 1초마다 유량을 계산하고 리셋
+  if (currentMillis - lastMeasurement >= 1000) {
+    flowRateLocal = flowPulseCount / 7.5;  // YF-S201 센서에서 1리터/분의 흐름에 7.5 펄스 발생
+    flowPulseCount = 0;  // 펄스 카운트를 리셋
+    lastMeasurement = currentMillis;
+  }
+  
+  return flowRateLocal;  // 리터/분 단위의 유량
+}
+// 유량센서 펄스 카운트 ISR (인터럽트 서비스 루틴)
+void countFlowPulses() {
+  flowPulseCount++;
+}
+
+// 초음파 거리 측정 함수
+long getUltrasonicDistance() {
+  digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  digitalWrite(TRIG_PIN, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(TRIG_PIN, LOW);
+  return pulseIn(ECHO_PIN, HIGH);
+}
+
+// 모든 LED 색상 설정 함수
+void setAllLEDsColor(uint32_t color) {
+  for (int i = 0; i < NUM_LEDS; i++) {
+    strip.setPixelColor(i, color);
+  }
+  strip.show();
+}
+
+// 서보모터로 차단기 제어 함수
+void setServoMotor(int angle) {
+  myServo.write(angle);  // 서보모터의 각도를 설정
+}
+
+void sendEmail() {
+  lcd.clear();
+  lcd.print("Sending");
+  lcd.setCursor(0, 1);
+  lcd.print("data...");
+  ESP_Mail_Session session;
+  session.server.host_name = SMTP_server;
+  session.server.port = SMTP_Port;
+  session.login.email = sender_email;
+  session.login.password = sender_password;
+  session.login.user_domain = "";
+
+  // Declare the message class
+  SMTP_Message message;
+  message.sender.name = "ESP 32";
+  message.sender.email = sender_email;
+  message.subject = "음주운전 발생";
+  message.addRecipient(Recipient_name, Recipient_email);
+
+  // Send simple text message
+  String textMsg = "대리운전기사 호출";
+  message.text.content = textMsg.c_str();
+  message.text.charSet = "us-ascii";
+  message.text.transfer_encoding = Content_Transfer_Encoding::enc_7bit;
+
+  if (!smtp.connect(&session))
+    return;
+
+  if (!MailClient.sendMail(&smtp, &message))
+    Serial.println("Error sending Email, " + smtp.errorReason());
+}
